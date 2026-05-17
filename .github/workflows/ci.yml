@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        # python3 is required at BUILD time by ecCodes ENABLE_MEMFS=ON
+        # (it embeds the GRIB definition tree into libeccodes.a; there is
+        # no runtime python dependency). The openjpeg/png/aec dev libs are
+        # the GRIB2 decompressors (JPEG2000 / PNG / CCSDS packings).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config git clang-format python3 \
+            libcurl4-openssl-dev libopenjp2-7-dev libpng-dev libaec-dev zlib1g-dev
+
+      - name: Lint
+        run: make lint
+
+      - name: Build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DGRIB_BUILD_TESTS=ON -DGRIB_BUILD_EXAMPLES=ON
+          cmake --build build -j$(nproc)
+
+      - name: Test
+        run: |
+          cd build && ctest --output-on-failure
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: |
+          brew install pkg-config curl clang-format openjpeg libpng libaec
+          python3 --version
+
+      - name: Lint
+        run: make lint
+
+      - name: Build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DGRIB_BUILD_TESTS=ON -DGRIB_BUILD_EXAMPLES=ON
+          cmake --build build -j$(sysctl -n hw.ncpu)
+
+      - name: Test
+        run: |
+          cd build && ctest --output-on-failure
+
+  # NOTE: no windows-latest job. ecCodes built statically with
+  # ENABLE_MEMFS=ON is fragile under MSVC (the MEMFS embed step + static
+  # CRT), and grib-cpp is consumed only by the Linux data-ingestion
+  # services, so a Windows leg would add flakiness with zero consumer
+  # value. The rest of the SDK family keeps Windows; grib-cpp deliberately
+  # does not.
+
+  markdown-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DavidAnson/markdownlint-cli2-action@v23

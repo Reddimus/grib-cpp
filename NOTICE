@@ -1,0 +1,28 @@
+grib-cpp
+Copyright (c) 2026 Reddimus
+Licensed under the MIT License (see LICENSE.md).
+
+This product builds and statically links the following third-party
+components. grib-cpp's own source is MIT; these dependencies retain their
+own (permissive, non-copyleft) licenses:
+
+- ECMWF ecCodes 2.47.0 — Apache License 2.0
+  Copyright 2005- ECMWF.  https://github.com/ecmwf/eccodes
+  (ecCodes self-fetches ecbuild 3.12.0, also Apache-2.0, at build time.)
+
+- libaec 1.1.6 — BSD 2-Clause License
+  https://gitlab.dkrz.de/k202009/libaec
+
+- OpenJPEG — BSD 2-Clause License (JPEG2000 / GRIB2 DRT 5.40)
+
+- libpng — PNG Reference Library License (GRIB2 DRT 5.41)
+
+- zlib — zlib License
+
+- Glaze v7.6.0 — MIT License  https://github.com/stephenberry/glaze
+
+There is no copyleft anywhere in this dependency chain. In particular,
+NCEPLIBS-g2c (LGPL-3.0) is deliberately NOT used — see CONTRIBUTING.md.
+
+Apache-2.0 (ecCodes) requires retaining this NOTICE on redistribution of
+the binary; that obligation is satisfied by shipping this file.
