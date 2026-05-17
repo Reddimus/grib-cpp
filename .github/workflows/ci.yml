@@ -12,6 +12,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # This SDK clones FIVE github repos at build time (glaze, googletest,
+      # and via ExternalProject: ecmwf/eccodes, MathisRosenhauer/libaec,
+      # plus ecbuild that eccodes itself FetchContents). GitHub
+      # rate-limits anonymous clones under load (intermittent 403).
+      # Rewriting to the workflow token authenticates every github.com
+      # clone (much higher limit) and removes the recurring flake.
+      - name: Authenticate git for FetchContent
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+
       - name: Install dependencies
         # python3 is required at BUILD time by ecCodes ENABLE_MEMFS=ON
         # (it embeds the GRIB definition tree into libeccodes.a; there is
@@ -39,6 +51,12 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
+
+      - name: Authenticate git for FetchContent
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
 
       - name: Install dependencies
         run: |

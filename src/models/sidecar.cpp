@@ -99,7 +99,7 @@ Result<std::vector<GribIndexEntry>> parse_nomads_idx(std::string_view text) {
 		e.raw = std::string(line);
 		std::uint64_t rec = 0;
 		if (to_u64(f[0], rec)) {
-			e.record = static_cast<std::size_t>(rec);
+			e.record = static_cast<std::uint32_t>(rec);
 		}
 		if (!to_u64(f[1], e.offset)) {
 			return std::unexpected(
