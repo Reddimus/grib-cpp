@@ -63,7 +63,7 @@ include(FetchContent)
 FetchContent_Declare(
     grib_cpp
     GIT_REPOSITORY https://github.com/Reddimus/grib-cpp.git
-    GIT_TAG v0.1.0
+    GIT_TAG v0.1.1
 )
 FetchContent_MakeAvailable(grib_cpp)
 target_link_libraries(your_target PRIVATE grib)

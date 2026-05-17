@@ -6,6 +6,22 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-17
+
+### Changed
+
+- `GribIndexEntry` fields reordered largest-alignment-first and `record`
+  narrowed to `uint32_t` — zero internal padding, `sizeof` 160 -> 144
+  (~10% tighter `std::vector<GribIndexEntry>` over a multi-thousand-record
+  sidecar, fewer cache lines per scan). Field-name API unchanged.
+
+### CI
+
+- Authenticated git rewrite for FetchContent on linux + macos. This SDK
+  clones five github repos at build time (glaze, googletest, and via
+  ExternalProject ecmwf/eccodes, MathisRosenhauer/libaec, ecbuild);
+  anonymous clones were intermittently 403-rate-limited. Durable fix.
+
 ## [0.1.0] - 2026-05-17
 
 ### Added
@@ -50,5 +66,6 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Public-domain NOAA GRIB2 2 m-temperature sample committed as a decode
   test fixture; deterministic offline sidecar tests.
 
-[Unreleased]: https://github.com/Reddimus/grib-cpp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Reddimus/grib-cpp/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Reddimus/grib-cpp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Reddimus/grib-cpp/releases/tag/v0.1.0
