@@ -35,6 +35,17 @@ libaec-dev zlib1g-dev libcurl4-openssl-dev`.
   (newline-JSON via Glaze, explicit `_offset`/`_length`, `2t`). Two
   strictly separate parsers; never share param vocabulary. `select()`
   filters param/level/step/member.
+  - **Sidecar URL**: NOMADS appends `.idx` to the full grib path
+    (`*.grib2.idx`); ECMWF open-data publishes a parallel `.index`
+    file *replacing* `.grib2` (e.g. `…-ef.grib2` next to `…-ef.index`).
+    Suffixing `.index` onto the grib URL 404s on ECMWF.
+  - **Level filter**: NOMADS `.idx` carries human-readable strings
+    like `"2 m above ground"` — substring-match on `"2 m"`. ECMWF
+    `.index` exposes the internal field `levtype` ("sfc", "pl", …)
+    with no numeric height, so `param="2t"` alone disambiguates
+    surface 2-meter temperature; the level field should be left
+    unset or matched against `"sfc"`. Crossed conventions silently
+    select 0 records.
 - **Decode** (`grib/handle.hpp`): RAII over the ecCodes C handle API.
   `GribHandle` (get_double/long/string, values, nearest) + `GribFile`
   (multi-message blob iterator). ecCodes decodes every packing
