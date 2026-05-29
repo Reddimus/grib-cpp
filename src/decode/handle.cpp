@@ -3,9 +3,12 @@
 
 #include "grib/handle.hpp"
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <eccodes.h>
+#include <mutex>
 #include <string>
 #include <utility>
 
@@ -15,6 +18,29 @@ namespace {
 
 codes_handle* as_handle(void* p) {
 	return static_cast<codes_handle*>(p);
+}
+
+// ecCodes loads its MEMFS-embedded definition tree lazily on the first handle
+// creation; that init mutates non-thread-safe global parser state (the flex
+// scanner / grib_context), so concurrent first-decodes across worker threads
+// race and abort the process with "Cannot create accessor ... action_class_noop
+// / fatal flex scanner internal error". Serialize only the FIRST handle
+// creation process-wide via double-checked locking — once the context + common
+// definitions are warm, every subsequent decode runs fully concurrently (the
+// fast path is a single relaxed-after-acquire atomic load, no lock).
+std::mutex g_eccodes_init_mtx;
+std::atomic<bool> g_eccodes_ready{false};
+
+codes_handle* make_handle_serialized(const void* msg, std::size_t len) {
+	if (!g_eccodes_ready.load(std::memory_order_acquire)) {
+		const std::lock_guard<std::mutex> lock(g_eccodes_init_mtx);
+		if (!g_eccodes_ready.load(std::memory_order_relaxed)) {
+			codes_handle* const h = codes_handle_new_from_message_copy(nullptr, msg, len);
+			g_eccodes_ready.store(true, std::memory_order_release);
+			return h;
+		}
+	}
+	return codes_handle_new_from_message_copy(nullptr, msg, len);
 }
 
 // Locate the next GRIB message at/after `from` in `buf`. Returns true and
@@ -85,7 +111,7 @@ Result<GribHandle> GribHandle::from_bytes(std::span<const std::byte> bytes) {
 	if (!find_message(buf, 0, start, len)) {
 		return std::unexpected(Error::decode("no complete GRIB message in buffer"));
 	}
-	codes_handle* h = codes_handle_new_from_message_copy(nullptr, buf.data() + start, len);
+	codes_handle* h = make_handle_serialized(buf.data() + start, len);
 	if (!h) {
 		return std::unexpected(Error::decode("codes_handle_new_from_message_copy failed"));
 	}
@@ -202,7 +228,7 @@ Result<std::optional<GribHandle>> GribFile::next() {
 	if (!find_message(buf_, pos_, start, len)) {
 		return std::optional<GribHandle>{};
 	}
-	codes_handle* h = codes_handle_new_from_message_copy(nullptr, buf_.data() + start, len);
+	codes_handle* h = make_handle_serialized(buf_.data() + start, len);
 	pos_ = start + len;
 	if (!h) {
 		return std::unexpected(Error::decode("codes_handle_new_from_message_copy failed"));

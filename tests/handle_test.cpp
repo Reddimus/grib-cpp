@@ -8,12 +8,14 @@
 #include "grib/extract.hpp"
 #include "grib/handle.hpp"
 
+#include <atomic>
 #include <cstddef>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <optional>
 #include <span>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -89,4 +91,31 @@ TEST(Extract, PointFromSample) {
 	ASSERT_TRUE(v.has_value()) << v.error().message;
 	EXPECT_GT(*v, 180.0);
 	EXPECT_LT(*v, 340.0);
+}
+
+// ecCodes loads its MEMFS definition tree lazily on the first handle creation;
+// that init is not thread-safe. Before the serialized-init guard in handle.cpp,
+// many threads decoding concurrently on a cold process aborted with a flex
+// scanner internal error. Hammer the path; every concurrent decode must succeed.
+TEST(GribHandle, ConcurrentDecodeIsRaceFree) {
+	const std::string buf = read_fixture();
+	if (buf.empty()) {
+		GTEST_SKIP() << "sample_2t.grib2 fixture absent";
+	}
+	constexpr int kThreads = 16;
+	std::atomic<int> ok{0};
+	std::vector<std::thread> threads;
+	threads.reserve(kThreads);
+	for (int i = 0; i < kThreads; ++i) {
+		threads.emplace_back([&] {
+			const grib::Result<grib::GribHandle> h = grib::GribHandle::from_bytes(as_bytes(buf));
+			if (h.has_value()) {
+				ok.fetch_add(1, std::memory_order_relaxed);
+			}
+		});
+	}
+	for (std::thread& t : threads) {
+		t.join();
+	}
+	EXPECT_EQ(ok.load(), kThreads);
 }
