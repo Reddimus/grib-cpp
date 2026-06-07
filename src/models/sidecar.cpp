@@ -4,6 +4,7 @@
 #include "grib/sidecar.hpp"
 
 #include <charconv>
+#include <cmath>
 #include <glaze/glaze.hpp>
 #include <glaze/json/generic.hpp>
 #include <string>
@@ -156,8 +157,18 @@ Result<std::vector<GribIndexEntry>> parse_ecmwf_index(std::string_view text) {
 			return std::unexpected(
 				Error::parse("ecmwf .index: missing _offset/_length in: " + std::string(line)));
 		}
-		e.offset = static_cast<std::uint64_t>(it_off->second.get<double>());
-		e.length = static_cast<std::uint64_t>(it_len->second.get<double>());
+		// Validate before the double->uint64 narrowing cast: negative, NaN/inf,
+		// or >= 2^64 values are UB to cast and would drive a garbage HTTP Range.
+		// A malformed .index must error, not silently produce a bad offset/length.
+		const double d_off = it_off->second.get<double>();
+		const double d_len = it_len->second.get<double>();
+		if (!std::isfinite(d_off) || d_off < 0.0 || d_off >= 18446744073709551616.0 ||
+			!std::isfinite(d_len) || d_len < 0.0 || d_len >= 18446744073709551616.0) {
+			return std::unexpected(Error::parse("ecmwf .index: out-of-range _offset/_length in: " +
+												std::string(line)));
+		}
+		e.offset = static_cast<std::uint64_t>(d_off);
+		e.length = static_cast<std::uint64_t>(d_len);
 
 		glz::generic::object_t::const_iterator it_param = obj.find("param");
 		if (it_param != obj.end()) {
