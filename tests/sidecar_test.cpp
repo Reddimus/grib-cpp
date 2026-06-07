@@ -79,6 +79,20 @@ TEST(EcmwfIndex, RejectsBadJson) {
 	EXPECT_FALSE(r.has_value());
 }
 
+TEST(EcmwfIndex, RejectsOutOfRangeOffset) {
+	// Regression: _offset/_length were cast double->uint64 with no validation;
+	// a negative or absurdly large value is UB to cast and would drive a garbage
+	// HTTP Range. Such lines must error, not silently parse.
+	grib::Result<std::vector<GribIndexEntry>> neg =
+		grib::parse_ecmwf_index(R"({"param":"2t","_offset":-5,"_length":1000})"
+								"\n");
+	EXPECT_FALSE(neg.has_value());
+	grib::Result<std::vector<GribIndexEntry>> huge =
+		grib::parse_ecmwf_index(R"({"param":"2t","_offset":1e30,"_length":1000})"
+								"\n");
+	EXPECT_FALSE(huge.has_value());
+}
+
 TEST(Select, FiltersByParamLevelMember) {
 	const std::string idx = "1:0:d=2026051700:PRMSL:mean sea level:anl:\n"
 							"2:100:d=2026051700:TMP:2 m above ground:anl:ENS=low-res ctl:\n"
