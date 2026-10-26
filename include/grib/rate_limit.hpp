@@ -17,9 +17,7 @@ namespace grib {
 /// Implements a token bucket algorithm to limit request rates.
 /// Thread-safe for concurrent access.
 ///
-/// Default configuration targets the Open-Meteo free tier (~600 req/min):
-/// 10 tokens with a 100ms refill interval = 10 requests/second burst,
-/// sustained 600 requests/minute.
+/// Defaults allow a 10-request burst and refill one token per 100 ms.
 class RateLimiter {
 public:
 	/// Configuration for rate limiting

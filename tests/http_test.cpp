@@ -315,4 +315,15 @@ TEST(HttpRange, RetryWrapperRetainsRangeAcrossAttempts) {
 	EXPECT_EQ(server.count(), 3);
 	EXPECT_EQ(server.last().headers.at("range"), "bytes=5-7");
 }
+TEST(HttpRange, OpenEndedResponsesMustReachKnownEof) {
+	LoopbackServer short_server(http_response(206, "abc", "Content-Range: bytes 5-7/10\r\n"));
+	grib::HttpClient client({.base_url = short_server.base_url()});
+	EXPECT_FALSE(client.get_range("/file", 5, 0));
+	LoopbackServer unknown(http_response(206, "abc", "Content-Range: bytes 5-7/*\r\n"));
+	grib::HttpClient unknown_client({.base_url = unknown.base_url()});
+	EXPECT_FALSE(unknown_client.get_range("/file", 5, 0));
+	LoopbackServer complete(http_response(206, "abcde", "Content-Range: bytes 5-9/10\r\n"));
+	grib::HttpClient complete_client({.base_url = complete.base_url()});
+	EXPECT_TRUE(complete_client.get_range("/file", 5, 0));
+}
 } // namespace

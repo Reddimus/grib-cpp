@@ -84,8 +84,7 @@ ExternalProject_Add(eccodes_ep
     BUILD_BYPRODUCTS ${ECCODES_LIB} ${ECCODES_MEMFS_LIB}
 )
 
-# INTERFACE_INCLUDE_DIRECTORIES must exist at configure time even though
-# ExternalProject populates it at build time.
+# The private decoder include directory is populated by the external build.
 file(MAKE_DIRECTORY ${ECCODES_INCLUDE})
 
 # INTERFACE imported lib (no IMPORTED_LOCATION) so libeccodes.a appears
@@ -96,7 +95,6 @@ file(MAKE_DIRECTORY ${ECCODES_INCLUDE})
 # re-scans archives so the group is omitted there.
 add_library(grib_eccodes INTERFACE IMPORTED GLOBAL)
 set_target_properties(grib_eccodes PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES ${ECCODES_INCLUDE}
     INTERFACE_LINK_LIBRARIES
         "$<$<NOT:$<PLATFORM_ID:Darwin>>:-Wl,--start-group>;${ECCODES_LIB};${ECCODES_MEMFS_LIB};$<$<NOT:$<PLATFORM_ID:Darwin>>:-Wl,--end-group>;${OPENJP2_LIB};${PNG_LIB};${LIBAEC_LIB};${LIBAEC_SZ};ZLIB::ZLIB;Threads::Threads;m;${CMAKE_DL_LIBS}"
 )

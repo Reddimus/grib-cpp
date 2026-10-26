@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.31)
 project(grib_consumer LANGUAGES CXX)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG -DGRIB_PARENT_FLAGS")
 if(GRIB_SOURCE_DIR)
     include(FetchContent)

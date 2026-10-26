@@ -240,7 +240,7 @@ Result<HttpResponse> HttpClient::get_range(std::string_view path, std::uint64_t 
 		}
 		const std::string_view total(end_result.ptr + 1,
 									 static_cast<std::size_t>(end - end_result.ptr - 1));
-		if (total == "*" && length > 0 && response->body.size() != length) {
+		if (total == "*" && (length == 0 || response->body.size() != length)) {
 			return invalid();
 		}
 		if (total != "*") {
@@ -249,7 +249,7 @@ Result<HttpResponse> HttpClient::get_range(std::string_view path, std::uint64_t 
 			if (total_result.ec != std::errc{} || total_result.ptr != end || size <= last) {
 				return invalid();
 			}
-			if (length > 0 && last != std::min(offset + length - 1, size - 1)) {
+			if (last != (length == 0 ? size - 1 : std::min(offset + length - 1, size - 1))) {
 				return invalid();
 			}
 		}

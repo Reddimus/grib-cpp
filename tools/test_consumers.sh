@@ -21,3 +21,11 @@ cmake -S "$source_dir/tests/consumer" -B "$scratch_dir/fetch" \
 cmake --build "$scratch_dir/fetch" --parallel 4
 "$scratch_dir/fetch/consumer" "$fixture"
 echo 'Relocated installed and FetchContent decoder consumers pass'
+
+python3 - "$scratch_dir/fetch/compile_commands.json" <<'PYCODE'
+import json,sys
+commands = [entry['command'] for entry in json.load(open(sys.argv[1])) if entry['file'].endswith('/tests/consumer/main.cpp')]
+assert len(commands) == 1, commands
+assert 'eccodes-prefix/include' not in commands[0], 'Private ecCodes headers leaked to consumer'
+print('Consumer cannot inherit private decoder include directories')
+PYCODE
