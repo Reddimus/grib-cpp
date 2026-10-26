@@ -1,6 +1,18 @@
 @PACKAGE_INIT@
-
 include(CMakeFindDependencyMacro)
-find_dependency(CURL)
-
+find_dependency(CURL 7.85)
+find_dependency(ZLIB)
+find_dependency(PNG)
+find_dependency(Threads)
+find_library(GRIB_OPENJP2_LIBRARY NAMES openjp2 libopenjp2 REQUIRED)
+if(NOT TARGET grib::eccodes)
+    add_library(grib::eccodes INTERFACE IMPORTED)
+    set(vendor "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/grib/vendor")
+    target_link_libraries(grib::eccodes INTERFACE
+        "$<$<NOT:$<PLATFORM_ID:Darwin>>:-Wl,--start-group>"
+        "${vendor}/libeccodes.a" "${vendor}/libeccodes_memfs.a"
+        "$<$<NOT:$<PLATFORM_ID:Darwin>>:-Wl,--end-group>"
+        "${vendor}/libaec.a" "${vendor}/libsz.a"
+        "${GRIB_OPENJP2_LIBRARY}" PNG::PNG ZLIB::ZLIB Threads::Threads m ${CMAKE_DL_LIBS})
+endif()
 include("${CMAKE_CURRENT_LIST_DIR}/gribTargets.cmake")

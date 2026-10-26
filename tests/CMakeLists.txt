@@ -19,3 +19,7 @@ if(NOT MSVC)
 endif()
 add_test(NAME grib_handle_test COMMAND grib_handle_test)
 set_tests_properties(grib_handle_test PROPERTIES TIMEOUT 30)
+
+add_executable(grib_http_test http_test.cpp)
+target_link_libraries(grib_http_test PRIVATE gtest_main grib_http)
+add_test(NAME grib_http_test COMMAND grib_http_test)

@@ -1,13 +1,3 @@
-# Layered static libraries:
-#   grib_core -> grib_http -> grib_models -> grib_decode -> grib_api -> grib
-#
-# Glaze and ecCodes are pulled in via BUILD_INTERFACE only (Glaze through its
-# include path, ecCodes through the IMPORTED eccodes::eccodes archive). This
-# sidesteps CMake's "INTERFACE/IMPORTED target not in export set" failure that
-# fires if they are attached to installable static libs. The estate consumes
-# this SDK via FetchContent (build-from-source), so the BUILD_INTERFACE link
-# is the real path; the find_package/install(EXPORT) path is best-effort.
-
 # Core library (error, rate limiting, retry)
 add_library(grib_core STATIC
     core/error.cpp
@@ -17,7 +7,6 @@ add_library(grib_core STATIC
 target_compile_features(grib_core PUBLIC cxx_std_23)
 target_include_directories(grib_core PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${glaze_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
@@ -40,7 +29,6 @@ add_library(grib_models STATIC
 target_link_libraries(grib_models PUBLIC grib_core)
 target_include_directories(grib_models PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${glaze_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
@@ -53,11 +41,11 @@ add_library(grib_decode STATIC
 add_dependencies(grib_decode eccodes_ep)
 target_link_libraries(grib_decode PUBLIC
     grib_core
-    $<BUILD_INTERFACE:eccodes::eccodes>
+    $<BUILD_INTERFACE:grib_eccodes>
+    $<INSTALL_INTERFACE:grib::eccodes>
 )
 target_include_directories(grib_decode PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${ECCODES_INCLUDE}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
@@ -74,3 +62,11 @@ target_include_directories(grib_api PUBLIC
 # Main SDK library (combines all)
 add_library(grib INTERFACE)
 target_link_libraries(grib INTERFACE grib_core grib_http grib_models grib_decode grib_api)
+
+add_library(grib::grib ALIAS grib)
+target_include_directories(grib_models SYSTEM PRIVATE ${glaze_SOURCE_DIR}/include)
+target_include_directories(grib_decode SYSTEM PRIVATE ${ECCODES_INCLUDE})
+
+if(WIN32)
+    target_compile_definitions(grib_http PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()

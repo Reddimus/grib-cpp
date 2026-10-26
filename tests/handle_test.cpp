@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: MIT
 //
 // Decodes the committed public-domain NOAA GRIB2 2 m-temperature sample
-// (tests/fixtures/sample_2t.grib2) end-to-end through ecCodes. Skips if the
-// fixture is absent so a checkout without it still goes green.
+// (tests/fixtures/sample_2t.grib2) end-to-end through ecCodes.
 
 #include "grib/extract.hpp"
 #include "grib/handle.hpp"
@@ -35,11 +34,17 @@ std::span<const std::byte> as_bytes(const std::string& s) {
 
 } // namespace
 
+TEST(GribFile, RejectsTruncatedHeadersInsteadOfReportingEof) {
+	std::string bytes(40, 'x');
+	bytes += std::string("GRIB\0\0\0\2", 8);
+	grib::Result<grib::GribFile> file = grib::GribFile::open(as_bytes(bytes));
+	ASSERT_TRUE(file);
+	EXPECT_FALSE(file->next());
+}
+
 TEST(GribHandle, DecodesSample2t) {
 	const std::string buf = read_fixture();
-	if (buf.empty()) {
-		GTEST_SKIP() << "sample_2t.grib2 fixture absent";
-	}
+	ASSERT_FALSE(buf.empty()) << "Required sample_2t.grib2 fixture absent";
 	grib::Result<grib::GribHandle> h = grib::GribHandle::from_bytes(as_bytes(buf));
 	ASSERT_TRUE(h.has_value()) << h.error().message;
 
@@ -64,9 +69,7 @@ TEST(GribHandle, DecodesSample2t) {
 
 TEST(GribFile, IteratesMessagesThenEnds) {
 	const std::string buf = read_fixture();
-	if (buf.empty()) {
-		GTEST_SKIP() << "sample_2t.grib2 fixture absent";
-	}
+	ASSERT_FALSE(buf.empty()) << "Required sample_2t.grib2 fixture absent";
 	grib::Result<grib::GribFile> f = grib::GribFile::open(as_bytes(buf));
 	ASSERT_TRUE(f.has_value());
 
@@ -84,9 +87,7 @@ TEST(GribFile, IteratesMessagesThenEnds) {
 
 TEST(Extract, PointFromSample) {
 	const std::string buf = read_fixture();
-	if (buf.empty()) {
-		GTEST_SKIP() << "sample_2t.grib2 fixture absent";
-	}
+	ASSERT_FALSE(buf.empty()) << "Required sample_2t.grib2 fixture absent";
 	grib::Result<double> v = grib::extract_point(as_bytes(buf), 40.7128, -74.0060);
 	ASSERT_TRUE(v.has_value()) << v.error().message;
 	EXPECT_GT(*v, 180.0);
@@ -99,9 +100,7 @@ TEST(Extract, PointFromSample) {
 // scanner internal error. Hammer the path; every concurrent decode must succeed.
 TEST(GribHandle, ConcurrentDecodeIsRaceFree) {
 	const std::string buf = read_fixture();
-	if (buf.empty()) {
-		GTEST_SKIP() << "sample_2t.grib2 fixture absent";
-	}
+	ASSERT_FALSE(buf.empty()) << "Required sample_2t.grib2 fixture absent";
 	constexpr int kThreads = 16;
 	std::atomic<int> ok{0};
 	std::vector<std::thread> threads;
@@ -118,4 +117,35 @@ TEST(GribHandle, ConcurrentDecodeIsRaceFree) {
 		t.join();
 	}
 	EXPECT_EQ(ok.load(), kThreads);
+}
+
+TEST(GribHandle, RetainsDataAfterTheInputBufferIsDestroyed) {
+	grib::Result<grib::GribHandle> handle = std::unexpected(grib::Error::decode("not loaded"));
+	{
+		const std::string data = read_fixture();
+		handle = grib::GribHandle::from_bytes(as_bytes(data));
+	}
+	ASSERT_TRUE(handle);
+	const grib::Result<long> edition = handle->get_long("editionNumber");
+	ASSERT_TRUE(edition);
+	EXPECT_EQ(*edition, 2);
+}
+
+TEST(GribHandle, CachedNearestSearchSurvivesMoves) {
+	const std::string bytes = read_fixture();
+	ASSERT_FALSE(bytes.empty());
+	grib::Result<grib::GribHandle> first = grib::GribHandle::from_bytes(as_bytes(bytes));
+	ASSERT_TRUE(first);
+	const grib::Result<double> expected = first->nearest(40.7128, -74.0060);
+	ASSERT_TRUE(expected);
+	grib::GribHandle second = std::move(*first);
+	EXPECT_FALSE(first->nearest(40.7128, -74.0060));
+	EXPECT_DOUBLE_EQ(second.nearest(40.7128, -74.0060).value(), *expected);
+	ASSERT_TRUE(second.nearest(51.5074, -0.1278));
+	EXPECT_DOUBLE_EQ(second.nearest(40.7128, -74.0060).value(), *expected);
+	grib::Result<grib::GribHandle> third = grib::GribHandle::from_bytes(as_bytes(bytes));
+	ASSERT_TRUE(third);
+	ASSERT_TRUE(third->nearest(0, 0));
+	*third = std::move(second);
+	EXPECT_DOUBLE_EQ(third->nearest(40.7128, -74.0060).value(), *expected);
 }

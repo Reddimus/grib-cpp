@@ -1,10 +1,14 @@
 // Copyright (c) 2026 PredictionMarketsAI
 // SPDX-License-Identifier: MIT
 
+#include "grib/rate_limit.hpp"
+#include "grib/retry.hpp"
 #include "grib/sidecar.hpp"
 
+#include <atomic>
 #include <gtest/gtest.h>
 #include <string>
+#include <thread>
 #include <vector>
 
 using grib::GribIndexEntry;
@@ -112,4 +116,79 @@ TEST(Select, FiltersByParamLevelMember) {
 
 	GribSelector empty;
 	EXPECT_EQ(grib::select(*r, empty).size(), 3u);
+}
+
+TEST(SidecarRegression, RejectsPartialNumbersAndTrailingJson) {
+	EXPECT_FALSE(grib::parse_nomads_idx("1:12junk:d=20261025:TMP:2 m above ground:anl:"));
+	EXPECT_FALSE(grib::parse_ecmwf_index(R"({"_offset":0,"_length":1} garbage)"));
+	EXPECT_FALSE(grib::parse_ecmwf_index(R"({"_offset":0.5,"_length":1})"));
+}
+
+TEST(SidecarRegression, PreservesFullWidthOffsetsAndRejectsAmbiguousFloats) {
+	const grib::Result<std::vector<grib::GribIndexEntry>> parsed =
+		grib::parse_ecmwf_index(R"({"_offset":9007199254740993,"_length":1})");
+	ASSERT_TRUE(parsed);
+	EXPECT_EQ(parsed->front().offset, 9007199254740993ULL);
+	EXPECT_FALSE(grib::parse_ecmwf_index(R"({"_offset":9.007199254740993e15,"_length":1})"));
+}
+
+TEST(Retry, TypedErrorsHonorPolicyFlags) {
+	grib::RetryPolicy policy;
+	policy.initial_delay = std::chrono::milliseconds{0};
+	EXPECT_TRUE(grib::should_retry(grib::Error::rate_limited("busy"), policy));
+	EXPECT_TRUE(grib::should_retry(grib::Error::server("busy"), policy));
+	int calls = 0;
+	const grib::Result<grib::HttpResponse> result = grib::with_retry(
+		[&]() -> grib::Result<grib::HttpResponse> {
+			if (++calls < 3) {
+				return std::unexpected(grib::Error::rate_limited("busy"));
+			}
+			return grib::HttpResponse{.status_code = 200};
+		},
+		policy);
+	EXPECT_TRUE(result);
+	EXPECT_EQ(calls, 3);
+	policy.retry_on_rate_limit = false;
+	policy.retry_on_server_error = false;
+	EXPECT_FALSE(grib::should_retry(grib::Error::rate_limited("busy"), policy));
+	EXPECT_FALSE(grib::should_retry(grib::Error::server("busy"), policy));
+}
+
+TEST(RateLimiter, EmptyFullRefillAndZeroWait) {
+	grib::RateLimiter limiter(
+		{.max_tokens = 2, .refill_interval = std::chrono::milliseconds{5}, .initial_tokens = 2});
+	EXPECT_TRUE(limiter.acquire_for(std::chrono::milliseconds{0}));
+	EXPECT_TRUE(limiter.try_acquire());
+	EXPECT_FALSE(limiter.try_acquire());
+	EXPECT_TRUE(limiter.acquire_for(std::chrono::milliseconds{100}));
+	limiter.reset();
+	EXPECT_EQ(limiter.available_tokens(), 2);
+}
+TEST(RateLimiter, InvalidConfigurationAndLongDeadlineAreBounded) {
+	grib::RateLimiter invalid(
+		{.max_tokens = 0, .refill_interval = std::chrono::milliseconds{-1}, .initial_tokens = 100});
+	EXPECT_EQ(invalid.config().max_tokens, 1);
+	EXPECT_EQ(invalid.config().initial_tokens, 1);
+	EXPECT_EQ(invalid.config().refill_interval.count(), 100);
+	grib::RateLimiter empty({.max_tokens = 1,
+							 .refill_interval = std::chrono::milliseconds::max(),
+							 .initial_tokens = 0});
+	EXPECT_FALSE(empty.acquire_for(std::chrono::milliseconds{1}));
+}
+TEST(RateLimiter, ConcurrentAcquisitionCannotSpendTheSameTokenTwice) {
+	grib::RateLimiter limiter(
+		{.max_tokens = 16, .refill_interval = std::chrono::hours{1}, .initial_tokens = 16});
+	std::atomic<int> acquired = 0;
+	std::vector<std::thread> threads;
+	for (int i = 0; i < 8; ++i) {
+		threads.emplace_back([&]() {
+			for (int n = 0; n < 100; ++n)
+				if (limiter.try_acquire())
+					++acquired;
+		});
+	}
+	for (std::thread& thread : threads)
+		thread.join();
+	EXPECT_EQ(acquired, 16);
+	EXPECT_EQ(limiter.available_tokens(), 0);
 }

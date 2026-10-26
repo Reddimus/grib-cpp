@@ -1,22 +1,5 @@
-# BuildEccodes.cmake — vendored, pinned, static ECMWF ecCodes (+ libaec).
-#
-# ecCodes (Apache-2.0) is the only license-compatible C/C++ GRIB2 decoder.
-# NCEPLIBS-g2c is LGPL-3.0 and would impose relink obligations on every
-# downstream consumer of this MIT, statically-linked SDK, so it is
-# deliberately NOT used (see CONTRIBUTING.md).
-#
-# Built as an ExternalProject so its ecbuild-based CMake never enters our
-# target/export graph. ecCodes self-bootstraps ecbuild 3.12.0 via
-# FetchContent at its own configure step (no submodules); the only
-# build-host requirements are network + python3 (MEMFS embeds the GRIB
-# definition tree into libeccodes.a — no runtime filesystem dependency,
-# which keeps consuming containers slim).
-#
-# ecCodes 2.47 requires libaec >= 1.1.4 via a CMake package config. Distro
-# libaec (Ubuntu 24.04 ships 1.1.2, no config) is too old, so libaec is
-# itself built from source as a pinned ExternalProject and fed to ecCodes
-# via CMAKE_PREFIX_PATH. This keeps the build identical on the dev host,
-# CI, and the ubuntu:24.04 service Dockerfiles.
+# Pinned static decoder and embedded definitions, isolated from the SDK export graph.
+# Keep libaec/ecCodes licenses with redistributed archives. Build hosts need Python.
 
 include(ExternalProject)
 
@@ -24,7 +7,7 @@ find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)
 
 set(ECCODES_VERSION 2.47.0)
-set(ECCODES_PREFIX   ${CMAKE_BINARY_DIR}/eccodes-prefix)
+set(ECCODES_PREFIX   ${CMAKE_CURRENT_BINARY_DIR}/eccodes-prefix)
 set(ECCODES_INCLUDE  ${ECCODES_PREFIX}/include)
 set(ECCODES_LIB      ${ECCODES_PREFIX}/lib/libeccodes.a)
 # ENABLE_MEMFS=ON + static emits a SECOND archive holding the embedded
@@ -33,7 +16,7 @@ set(ECCODES_LIB      ${ECCODES_PREFIX}/lib/libeccodes.a)
 set(ECCODES_MEMFS_LIB ${ECCODES_PREFIX}/lib/libeccodes_memfs.a)
 
 set(LIBAEC_VERSION 1.1.6)
-set(LIBAEC_PREFIX  ${CMAKE_BINARY_DIR}/libaec-prefix)
+set(LIBAEC_PREFIX  ${CMAKE_CURRENT_BINARY_DIR}/libaec-prefix)
 set(LIBAEC_LIB     ${LIBAEC_PREFIX}/lib/libaec.a)
 set(LIBAEC_SZ      ${LIBAEC_PREFIX}/lib/libsz.a)
 
@@ -101,8 +84,7 @@ ExternalProject_Add(eccodes_ep
     BUILD_BYPRODUCTS ${ECCODES_LIB} ${ECCODES_MEMFS_LIB}
 )
 
-# INTERFACE_INCLUDE_DIRECTORIES must exist at configure time even though
-# ExternalProject populates it at build time.
+# The private decoder include directory is populated by the external build.
 file(MAKE_DIRECTORY ${ECCODES_INCLUDE})
 
 # INTERFACE imported lib (no IMPORTED_LOCATION) so libeccodes.a appears
@@ -111,10 +93,9 @@ file(MAKE_DIRECTORY ${ECCODES_INCLUDE})
 # per-chunk objects cross-reference each other, so a group makes the
 # cyclic static resolution order-independent. GNU ld only; Apple ld
 # re-scans archives so the group is omitted there.
-add_library(eccodes::eccodes INTERFACE IMPORTED GLOBAL)
-set_target_properties(eccodes::eccodes PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES ${ECCODES_INCLUDE}
+add_library(grib_eccodes INTERFACE IMPORTED GLOBAL)
+set_target_properties(grib_eccodes PROPERTIES
     INTERFACE_LINK_LIBRARIES
         "$<$<NOT:$<PLATFORM_ID:Darwin>>:-Wl,--start-group>;${ECCODES_LIB};${ECCODES_MEMFS_LIB};$<$<NOT:$<PLATFORM_ID:Darwin>>:-Wl,--end-group>;${OPENJP2_LIB};${PNG_LIB};${LIBAEC_LIB};${LIBAEC_SZ};ZLIB::ZLIB;Threads::Threads;m;${CMAKE_DL_LIBS}"
 )
-add_dependencies(eccodes::eccodes eccodes_ep)
+add_dependencies(grib_eccodes eccodes_ep)

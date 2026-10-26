@@ -6,6 +6,22 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-25
+
+### Fixed
+
+- Bound GRIB header reads and distinguish truncated messages from EOF.
+- Preserve full-width sidecar offsets and reject invalid numeric ranges.
+- Validate HTTP ranges, Content-Range, body limits, and C callback failures.
+- Guard moved-from handles, coordinates, retry delays, and token arithmetic.
+- Install private decoder archives and licenses for relocated consumers.
+- Correct ECMWF sidecar URLs, portable build defaults, hooks, and setup docs.
+
+### Changed
+
+- Require CMake 3.31 and thread-safe libcurl 7.85+; update Glaze to 9.0.0.
+- Default tests, examples, and LTO to OFF for embedded builds.
+
 ## [0.1.1] - 2026-05-17
 
 ### Changed
@@ -66,6 +82,8 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Public-domain NOAA GRIB2 2 m-temperature sample committed as a decode
   test fixture; deterministic offline sidecar tests.
 
-[Unreleased]: https://github.com/Reddimus/grib-cpp/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Reddimus/grib-cpp/compare/v0.2.0...HEAD
 [0.1.1]: https://github.com/Reddimus/grib-cpp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Reddimus/grib-cpp/releases/tag/v0.1.0
+
+[0.2.0]: https://github.com/Reddimus/grib-cpp/compare/v0.1.2...v0.2.0

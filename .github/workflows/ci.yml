@@ -35,6 +35,9 @@ jobs:
             build-essential cmake pkg-config git clang-format python3 \
             libcurl4-openssl-dev libopenjp2-7-dev libpng-dev libaec-dev zlib1g-dev
 
+      - name: Consumer builds
+        run: make consumers
+
       - name: Lint
         run: make lint
 
@@ -63,6 +66,9 @@ jobs:
           brew install pkg-config curl clang-format openjpeg libpng libaec
           python3 --version
 
+      - name: Consumer builds
+        run: make consumers
+
       - name: Lint
         run: make lint
 
@@ -75,12 +81,7 @@ jobs:
         run: |
           cd build && ctest --output-on-failure
 
-  # NOTE: no windows-latest job. ecCodes built statically with
-  # ENABLE_MEMFS=ON is fragile under MSVC (the MEMFS embed step + static
-  # CRT), and grib-cpp is consumed only by the Linux data-ingestion
-  # services, so a Windows leg would add flakiness with zero consumer
-  # value. The rest of the SDK family keeps Windows; grib-cpp deliberately
-  # does not.
+  # Windows is not currently supported or validated.
 
   markdown-lint:
     runs-on: ubuntu-latest
