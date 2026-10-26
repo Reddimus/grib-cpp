@@ -1,6 +1,7 @@
 // Copyright (c) 2026 PredictionMarketsAI
 // SPDX-License-Identifier: MIT
 
+#include "grib/retry.hpp"
 #include "grib/sidecar.hpp"
 
 #include <gtest/gtest.h>
@@ -112,4 +113,40 @@ TEST(Select, FiltersByParamLevelMember) {
 
 	GribSelector empty;
 	EXPECT_EQ(grib::select(*r, empty).size(), 3u);
+}
+
+TEST(SidecarRegression, RejectsPartialNumbersAndTrailingJson) {
+	EXPECT_FALSE(grib::parse_nomads_idx("1:12junk:d=20261025:TMP:2 m above ground:anl:"));
+	EXPECT_FALSE(grib::parse_ecmwf_index(R"({"_offset":0,"_length":1} garbage)"));
+	EXPECT_FALSE(grib::parse_ecmwf_index(R"({"_offset":0.5,"_length":1})"));
+}
+
+TEST(SidecarRegression, PreservesFullWidthOffsetsAndRejectsAmbiguousFloats) {
+	const grib::Result<std::vector<grib::GribIndexEntry>> parsed =
+		grib::parse_ecmwf_index(R"({"_offset":9007199254740993,"_length":1})");
+	ASSERT_TRUE(parsed);
+	EXPECT_EQ(parsed->front().offset, 9007199254740993ULL);
+	EXPECT_FALSE(grib::parse_ecmwf_index(R"({"_offset":9.007199254740993e15,"_length":1})"));
+}
+
+TEST(Retry, TypedErrorsHonorPolicyFlags) {
+	grib::RetryPolicy policy;
+	policy.initial_delay = std::chrono::milliseconds{0};
+	EXPECT_TRUE(grib::should_retry(grib::Error::rate_limited("busy"), policy));
+	EXPECT_TRUE(grib::should_retry(grib::Error::server("busy"), policy));
+	int calls = 0;
+	const grib::Result<grib::HttpResponse> result = grib::with_retry(
+		[&]() -> grib::Result<grib::HttpResponse> {
+			if (++calls < 3) {
+				return std::unexpected(grib::Error::rate_limited("busy"));
+			}
+			return grib::HttpResponse{.status_code = 200};
+		},
+		policy);
+	EXPECT_TRUE(result);
+	EXPECT_EQ(calls, 3);
+	policy.retry_on_rate_limit = false;
+	policy.retry_on_server_error = false;
+	EXPECT_FALSE(grib::should_retry(grib::Error::rate_limited("busy"), policy));
+	EXPECT_FALSE(grib::should_retry(grib::Error::server("busy"), policy));
 }

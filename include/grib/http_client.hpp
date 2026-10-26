@@ -5,6 +5,7 @@
 #include "grib/error.hpp"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -27,9 +28,11 @@ struct HttpResponse {
 /// to get()/get_range() are expected to be absolute.
 struct HttpClientConfig {
 	std::string base_url;
-	std::string user_agent{"grib-cpp/0.1.0"};
+	std::string user_agent{"grib-cpp/0.2.0"};
 	std::chrono::seconds timeout{120};
 	bool verify_ssl{true};
+	/// Maximum decompressed body size; 0 disables the limit.
+	std::size_t max_response_bytes{64 * 1024 * 1024};
 };
 
 /// GET-only HTTP client for anonymous public GRIB buckets/NOMADS.
@@ -68,6 +71,7 @@ public:
 	[[nodiscard]] const HttpClientConfig& config() const noexcept;
 
 private:
+	[[nodiscard]] Result<HttpResponse> perform(std::string_view path, const char* range) const;
 	struct Impl;
 	std::unique_ptr<Impl> impl_;
 };

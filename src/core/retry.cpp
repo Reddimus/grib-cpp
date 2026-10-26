@@ -12,6 +12,11 @@ Result<HttpResponse> RetryingClient::get(std::string_view path) {
 	return with_retry([&]() { return client_.get(path); }, policy_);
 }
 
+Result<HttpResponse> RetryingClient::get_range(std::string_view path, std::uint64_t offset,
+											   std::uint64_t length) {
+	return with_retry([&]() { return client_.get_range(path, offset, length); }, policy_);
+}
+
 const RetryPolicy& RetryingClient::policy() const noexcept {
 	return policy_;
 }

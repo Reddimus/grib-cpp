@@ -5,10 +5,8 @@
 /// @file handle.hpp
 /// @brief RAII C++23 wrapper over the ecCodes C handle API.
 ///
-/// ecCodes (Apache-2.0) decodes every GRIB2 packing template transparently
-/// (simple / complex / spatial-diff / JPEG2000 / PNG / CCSDS). We never touch
-/// packing — these wrappers just own the C handle and expose typed,
-/// std::expected-returning accessors.
+/// Owns ecCodes handles and exposes typed Result accessors. Decoder support
+/// depends on the pinned ecCodes build and enabled packing dependencies.
 
 #include "grib/error.hpp"
 
@@ -21,7 +19,7 @@
 
 namespace grib {
 
-/// Owns a single decoded GRIB message (codes_handle*). Move-only.
+/// Owns a decoded message and cached grid search. Move-only; externally synchronize access.
 class GribHandle {
 public:
 	/// Decode the first message in `bytes` (a copy is taken — `bytes` need
@@ -46,7 +44,8 @@ public:
 
 private:
 	explicit GribHandle(void* h) noexcept;
-	void* h_{nullptr}; // codes_handle*
+	void* h_{nullptr};				 // codes_handle*
+	mutable void* nearest_{nullptr}; // codes_nearest*; destroyed before h_
 
 	friend class GribFile;
 };

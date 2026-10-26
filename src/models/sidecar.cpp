@@ -7,6 +7,7 @@
 #include <cmath>
 #include <glaze/glaze.hpp>
 #include <glaze/json/generic.hpp>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -32,7 +33,7 @@ std::vector<std::string_view> split(std::string_view s, char delim) {
 
 bool to_u64(std::string_view s, std::uint64_t& out) {
 	const std::from_chars_result r = std::from_chars(s.data(), s.data() + s.size(), out);
-	return r.ec == std::errc{};
+	return r.ec == std::errc{} && r.ptr == s.data() + s.size();
 }
 
 // GEFS/SREF .idx records carry an ensemble tag in the trailing fields, e.g.
@@ -59,24 +60,50 @@ int parse_nomads_member(std::string_view rest) {
 		return -1;
 	}
 	int n = 0;
-	std::from_chars(tok.data() + i, tok.data() + j, n);
-	return n;
+	const std::from_chars_result result = std::from_chars(tok.data() + i, tok.data() + j, n);
+	return result.ec == std::errc{} && !tok.starts_with("-") ? n : -1;
 }
 
-std::string generic_to_string(const glz::generic& v) {
-	if (v.is_string()) {
-		return v.get<std::string>();
+std::string generic_to_string(const glz::generic_u64& value) {
+	if (value.is_string()) {
+		return value.get<std::string>();
 	}
-	if (v.is_number()) {
-		const double d = v.get<double>();
-		const long long ll = static_cast<long long>(d);
-		if (static_cast<double>(ll) == d) {
-			return std::to_string(ll);
+	if (const std::uint64_t* number = value.get_if<std::uint64_t>()) {
+		return std::to_string(*number);
+	}
+	if (const std::int64_t* number = value.get_if<std::int64_t>()) {
+		return std::to_string(*number);
+	}
+	if (const double* number = value.get_if<double>(); number && std::isfinite(*number)) {
+		char buffer[64];
+		const std::to_chars_result result = std::to_chars(buffer, buffer + sizeof(buffer), *number);
+		if (result.ec == std::errc{}) {
+			return std::string(buffer, result.ptr);
 		}
-		return std::to_string(d);
 	}
 	return {};
 }
+bool exact_u64(const glz::generic_u64& value, std::uint64_t& out) {
+	if (const std::uint64_t* number = value.get_if<std::uint64_t>()) {
+		out = *number;
+		return true;
+	}
+	if (const std::int64_t* number = value.get_if<std::int64_t>(); number && *number >= 0) {
+		out = static_cast<std::uint64_t>(*number);
+		return true;
+	}
+	if (const double* number = value.get_if<double>();
+		number && std::isfinite(*number) && *number >= 0 && *number < 9007199254740992.0 &&
+		std::trunc(*number) == *number) {
+		out = static_cast<std::uint64_t>(*number);
+		return true;
+	}
+	return false;
+}
+struct ReadOptions : glz::opts {
+	bool validate_trailing_whitespace = true;
+};
+inline constexpr ReadOptions kReadOptions{{.null_terminated = false}};
 
 } // namespace
 
@@ -99,9 +126,11 @@ Result<std::vector<GribIndexEntry>> parse_nomads_idx(std::string_view text) {
 		GribIndexEntry e;
 		e.raw = std::string(line);
 		std::uint64_t rec = 0;
-		if (to_u64(f[0], rec)) {
-			e.record = static_cast<std::uint32_t>(rec);
+		if (!to_u64(f[0], rec) || rec == 0 || rec > std::numeric_limits<std::uint32_t>::max()) {
+			return std::unexpected(
+				Error::parse("nomads .idx: invalid or unsupported submessage record"));
 		}
+		e.record = static_cast<std::uint32_t>(rec);
 		if (!to_u64(f[1], e.offset)) {
 			return std::unexpected(
 				Error::parse("nomads .idx: bad byte offset in: " + std::string(line)));
@@ -121,9 +150,10 @@ Result<std::vector<GribIndexEntry>> parse_nomads_idx(std::string_view text) {
 
 	// Length = next record's offset - this offset (final = open-ended 0).
 	for (std::size_t i = 0; i + 1 < entries.size(); ++i) {
-		if (entries[i + 1].offset > entries[i].offset) {
-			entries[i].length = entries[i + 1].offset - entries[i].offset;
+		if (entries[i + 1].offset <= entries[i].offset) {
+			return std::unexpected(Error::parse("nomads .idx: offsets must increase"));
 		}
+		entries[i].length = entries[i + 1].offset - entries[i].offset;
 	}
 	return entries;
 }
@@ -139,55 +169,47 @@ Result<std::vector<GribIndexEntry>> parse_ecmwf_index(std::string_view text) {
 		if (line.empty()) {
 			continue;
 		}
-		glz::generic root{};
-		const glz::error_ctx ec = glz::read_json(root, std::string(line));
+		glz::generic_u64 root{};
+		const glz::error_ctx ec = glz::read<kReadOptions>(root, line);
 		if (ec || !root.is_object()) {
 			return std::unexpected(
 				Error::parse("ecmwf .index: invalid JSON line: " + std::string(line)));
 		}
-		const glz::generic::object_t& obj = root.get_object();
+		const glz::generic_u64::object_t& obj = root.get_object();
 
 		GribIndexEntry e;
 		e.raw = std::string(line);
 
-		glz::generic::object_t::const_iterator it_off = obj.find("_offset");
-		glz::generic::object_t::const_iterator it_len = obj.find("_length");
+		glz::generic_u64::object_t::const_iterator it_off = obj.find("_offset");
+		glz::generic_u64::object_t::const_iterator it_len = obj.find("_length");
 		if (it_off == obj.end() || it_len == obj.end() || !it_off->second.is_number() ||
 			!it_len->second.is_number()) {
 			return std::unexpected(
 				Error::parse("ecmwf .index: missing _offset/_length in: " + std::string(line)));
 		}
-		// Validate before the double->uint64 narrowing cast: negative, NaN/inf,
-		// or >= 2^64 values are UB to cast and would drive a garbage HTTP Range.
-		// A malformed .index must error, not silently produce a bad offset/length.
-		const double d_off = it_off->second.get<double>();
-		const double d_len = it_len->second.get<double>();
-		if (!std::isfinite(d_off) || d_off < 0.0 || d_off >= 18446744073709551616.0 ||
-			!std::isfinite(d_len) || d_len < 0.0 || d_len >= 18446744073709551616.0) {
-			return std::unexpected(Error::parse("ecmwf .index: out-of-range _offset/_length in: " +
-												std::string(line)));
+		if (!exact_u64(it_off->second, e.offset) || !exact_u64(it_len->second, e.length) ||
+			(e.length > 0 && e.length - 1 > std::numeric_limits<std::uint64_t>::max() - e.offset)) {
+			return std::unexpected(Error::parse("ecmwf .index: invalid byte range"));
 		}
-		e.offset = static_cast<std::uint64_t>(d_off);
-		e.length = static_cast<std::uint64_t>(d_len);
 
-		glz::generic::object_t::const_iterator it_param = obj.find("param");
+		glz::generic_u64::object_t::const_iterator it_param = obj.find("param");
 		if (it_param != obj.end()) {
 			e.param = generic_to_string(it_param->second);
 		}
-		glz::generic::object_t::const_iterator it_lt = obj.find("levtype");
-		glz::generic::object_t::const_iterator it_ll = obj.find("levelist");
+		glz::generic_u64::object_t::const_iterator it_lt = obj.find("levtype");
+		glz::generic_u64::object_t::const_iterator it_ll = obj.find("levelist");
 		if (it_ll != obj.end()) {
 			e.level = generic_to_string(it_ll->second);
 		} else if (it_lt != obj.end()) {
 			e.level = generic_to_string(it_lt->second);
 		}
-		glz::generic::object_t::const_iterator it_step = obj.find("step");
+		glz::generic_u64::object_t::const_iterator it_step = obj.find("step");
 		if (it_step != obj.end()) {
 			e.step = generic_to_string(it_step->second);
 		}
 		// type: "cf" (control) -> member 0; "pf" + number -> member N.
-		glz::generic::object_t::const_iterator it_type = obj.find("type");
-		glz::generic::object_t::const_iterator it_num = obj.find("number");
+		glz::generic_u64::object_t::const_iterator it_type = obj.find("type");
+		glz::generic_u64::object_t::const_iterator it_num = obj.find("number");
 		if (it_type != obj.end() && it_type->second.is_string() &&
 			it_type->second.get<std::string>() == "cf") {
 			e.member = 0;
@@ -195,7 +217,11 @@ Result<std::vector<GribIndexEntry>> parse_ecmwf_index(std::string_view text) {
 			const std::string n = generic_to_string(it_num->second);
 			int parsed = -1;
 			if (!n.empty()) {
-				std::from_chars(n.data(), n.data() + n.size(), parsed);
+				const std::from_chars_result result =
+					std::from_chars(n.data(), n.data() + n.size(), parsed);
+				if (result.ec != std::errc{} || result.ptr != n.data() + n.size()) {
+					parsed = -1;
+				}
 			}
 			e.member = parsed;
 		}

@@ -52,8 +52,10 @@ int main() {
 			  << "\n";
 
 	grib::Result<grib::HttpResponse> blob = client.get_range(base, rec.offset, rec.length);
-	if (!blob) {
-		std::cerr << "range fetch failed: " << blob.error().message << "\n";
+	if (!blob || blob->status_code != 206) {
+		std::cerr << "range fetch failed: "
+				  << (blob ? "HTTP " + std::to_string(blob->status_code) : blob.error().message)
+				  << "\n";
 		return 1;
 	}
 	std::span<const std::byte> bytes(reinterpret_cast<const std::byte*>(blob->body.data()),

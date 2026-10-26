@@ -7,8 +7,8 @@ repo. For security-vulnerability reports, see [SECURITY.md](SECURITY.md)
 
 ## Dependency policy (read this first)
 
-GRIB2 has exactly one license-compatible C/C++ decoder: **ECMWF ecCodes**
-(Apache-2.0). It is vendored as a pinned static ExternalProject.
+This project uses **ECMWF ecCodes** (Apache-2.0), built from a pinned
+source revision as a static ExternalProject.
 
 **NCEPLIBS-g2c is LGPL-3.0 and MUST NOT be added.** It would impose
 relink / corresponding-source obligations on every downstream consumer of
@@ -41,12 +41,12 @@ workflow for exact invocations. There is no Windows build.
 ## Development workflow
 
 ```bash
-make debug          # Debug build with symbols + sanitizers
+make debug          # Separate Debug build; sanitizers require an explicit CMake option
 make test           # Run unit tests (ctest)
 make lint           # clang-format --dry-run + cpp_auto_audit
 make format         # Apply clang-format in place
 make coverage       # lcov coverage report (Debug build)
-make clean          # Remove build/
+make clean          # Remove Release and Debug build directories
 ```
 
 Always run `make lint` (or `make pre-commit`) before pushing — CI gates
@@ -55,14 +55,14 @@ on both `clang-format --dry-run` AND `cpp_auto_audit.py`.
 ## Code style
 
 - **C++23**: `std::expected<T, Error>` for all error-returning
-  operations, no exceptions in the public API.
+  operations, Result errors for expected failures; allocation failures can throw.
 - **No `auto`** for local variable declarations. Carve-outs: structured
   bindings, lambda closures, iterator-like results (`.find()` etc).
 - **Formatting**: `.clang-format` (LLVM base, tabs, 100-col). `make
   format` applies it.
 - **Includes**: project headers first, then system (clang-format
   `SortIncludes`).
-- **JSON**: the ECMWF `.index` is parsed with **Glaze** (`glz::generic`).
+- **JSON**: the ECMWF `.index` is parsed with **Glaze** (`glz::generic_u64`).
   The NOMADS `.idx` is plain text — no JSON. Keep the two sidecar parsers
   strictly separate; never share param-vocabulary logic between them.
 - **ecCodes** is wrapped behind `grib/handle.hpp` only. Public headers do
@@ -82,8 +82,9 @@ on both `clang-format --dry-run` AND `cpp_auto_audit.py`.
 
 ```bash
 # 1. Update CMakeLists.txt VERSION and CHANGELOG.md [Unreleased] -> [vX.Y.Z]
-# 2. git commit -am "chore(release): cut vX.Y.Z" && git push origin main
-# 3. git tag vX.Y.Z && git push origin vX.Y.Z   # release.yml auto-publishes
+# 2. Commit and merge the release preparation through a passing PR.
+# 3. On verified main: git tag -s vX.Y.Z -m "Release vX.Y.Z"
+# 4. git push origin vX.Y.Z   # release.yml auto-publishes
 ```
 
 `release.yml` hard-fails if the tag does not equal the CMakeLists

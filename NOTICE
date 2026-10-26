@@ -19,10 +19,10 @@ own (permissive, non-copyleft) licenses:
 
 - zlib — zlib License
 
-- Glaze v7.6.0 — MIT License  https://github.com/stephenberry/glaze
+- Glaze v9.0.0 — MIT License  https://github.com/stephenberry/glaze
 
-There is no copyleft anywhere in this dependency chain. In particular,
+This build uses the components above. In particular,
 NCEPLIBS-g2c (LGPL-3.0) is deliberately NOT used — see CONTRIBUTING.md.
 
-Apache-2.0 (ecCodes) requires retaining this NOTICE on redistribution of
-the binary; that obligation is satisfied by shipping this file.
+Installed archives include the upstream ecCodes and libaec licenses and
+notices under share/licenses/grib-cpp; retain them when redistributing.

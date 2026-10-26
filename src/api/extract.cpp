@@ -50,14 +50,14 @@ Result<double> extract_point_member(std::span<const std::byte> blob, double lat,
 			break;
 		}
 		const GribHandle& h = **msg;
-		int m = -1;
+		long m = -1;
 		Result<long> pn = h.get_long("perturbationNumber");
 		if (pn) {
-			m = static_cast<int>(*pn);
+			m = *pn;
 		} else {
 			Result<long> num = h.get_long("number");
 			if (num) {
-				m = static_cast<int>(*num);
+				m = *num;
 			}
 		}
 		if (m == member) {
